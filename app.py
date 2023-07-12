@@ -1,12 +1,7 @@
 import streamlit as st
 import openai
-# from litechain.contrib import OpenAIChatChain, OpenAIChatMessage, OpenAIChatDelta
-# import asyncio
-import tiktoken
+from utils.token_utils import num_tokens_from_messages
 import glob
-
-
-
 
 
 
@@ -40,56 +35,7 @@ def get_available_system_prompts():
     return available_prompts
 
 
-def num_tokens_from_string(string: str, encoding_name: str) -> int:
-    """Returns the number of tokens in a text string."""
-    encoding = tiktoken.get_encoding(encoding_name)
-    num_tokens = len(encoding.encode(string))
-    return num_tokens
 
-    
-def num_tokens_from_messages(messages, model="gpt-3.5-turbo-0613", excluded_keys=['num_tokens']):
-    """Return the number of tokens used by a list of messages."""
-    try:
-        encoding = tiktoken.encoding_for_model(model)
-    except KeyError:
-        print("Warning: model not found. Using cl100k_base encoding.")
-        encoding = tiktoken.get_encoding("cl100k_base")
-    
-    if model in {
-        "gpt-3.5-turbo-0613",
-        "gpt-3.5-turbo-16k-0613",
-        "gpt-4-0314",
-        "gpt-4-32k-0314",
-        "gpt-4-0613",
-        "gpt-4-32k-0613",
-        }:
-        tokens_per_message = 3
-        tokens_per_name = 1
-    elif model == "gpt-3.5-turbo-0301":
-        tokens_per_message = 4  # every message follows <|start|>{role/name}\n{content}<|end|>\n
-        tokens_per_name = -1  # if there's a name, the role is omitted
-    elif "gpt-3.5-turbo" in model:
-        print("Warning: gpt-3.5-turbo may update over time. Returning num tokens assuming gpt-3.5-turbo-0613.")
-        return num_tokens_from_messages(messages, model="gpt-3.5-turbo-0613")
-    elif "gpt-4" in model:
-        print("Warning: gpt-4 may update over time. Returning num tokens assuming gpt-4-0613.")
-        return num_tokens_from_messages(messages, model="gpt-4-0613")
-    else:
-        raise NotImplementedError(
-            f"""num_tokens_from_messages() is not implemented for model {model}. See https://github.com/openai/openai-python/blob/main/chatml.md for information on how messages are converted to tokens."""
-        )
-    num_tokens = 0
-    for message in messages:
-        num_tokens += tokens_per_message
-        for key, value in message.items():
-            if key == "name":
-                num_tokens += tokens_per_name
-            elif key in excluded_keys:
-                continue
-            num_tokens += len(encoding.encode(value))
-            
-    num_tokens += 3  # every reply is primed with <|start|>assistant<|message|>
-    return num_tokens
 
 available_models = sorted(get_available_models())
 
@@ -117,19 +63,41 @@ if "available_system_prompts" not in st.session_state:
 
 
 
+model_tab, system_tab, usage_tab = st.tabs(["Model", "System", "Usage"])
 
-with st.sidebar:
+# Sytem prompt tab:
+with system_tab:
+        
+    # st.session_state['selected_system_prompt'] = st.selectbox('System Prompts', 
+    #                                                           st.session_state["available_system_prompts"].keys(),
+    #                                                           index=2
+    #                                                           )
+    
+    # system_text = st.session_state["available_system_prompts"][st.session_state['selected_system_prompt']]
+
+    # st.session_state["system_prompt"] = st.text_area("System Message", system_text)
+
+    left_column, right_column = st.columns(2)
+
+    # Left column for editing the system prompt in markdown
+    with left_column:
+        st.session_state['selected_system_prompt'] = st.selectbox('System Prompts',
+                                                                  list(st.session_state["available_system_prompts"].keys()),
+                                                                  index=2
+                                                                  )
+
+        system_text = st.session_state["available_system_prompts"][st.session_state['selected_system_prompt']]
+
+        st.session_state["system_prompt"] = st.text_area("System Message", system_text)
+
+    # Right column for rendering the markdown
+    with right_column:
+        st.markdown(st.session_state["system_prompt"])
+
+
+with model_tab:
     st.session_state['selected_model'] = st.selectbox('Open AI Models', 
                                                       available_models)
-    
-    st.session_state['selected_system_prompt'] = st.selectbox('System Prompts', 
-                                                              st.session_state["available_system_prompts"].keys(),
-                                                              index=2
-                                                              )
-    
-    system_text = st.session_state["available_system_prompts"][st.session_state['selected_system_prompt']]
-
-
     
     
     st.session_state['temperature'] = st.slider("Temperature", 
@@ -137,45 +105,28 @@ with st.sidebar:
                                                 min_value=0,
                                                 max_value=200, 
                                                 value=100)
-    
-    st.session_state["system_prompt"] = st.text_area("System Message", system_text)
 
 
-# # Chat message history
-# with st.container():
-#     for message in st.session_state.messages:
-#         with st.chat_message(message["role"]):
-#             st.markdown(message["content"])
-    
-# with st.container():
-#     if user_input := st.chat_input():
-#         st.session_state.messages.append({"role": "user", "content": user_input})
-#         with st.chat_message("user"):
-#             st.markdown(user_input)
+with usage_tab:
+    model = st.session_state.selected_model
+    model_usage = st.session_state.usage
+    usage_stats = [
+        {
+            "Model": model,
+            "Prompt Tokens": model_usage[model]["prompt_tokens"],
+            "Completion Tokens": model_usage[model]["completion_tokens"],
+            "Total Tokens": model_usage[model]["total_tokens"],
+            "Num Requests": model_usage[model]["num_requests"]
+        }
+        for model in model_usage
+    ]
 
-#         with st.chat_message("assistant"):
-#             message_placeholder = st.empty()
-#             full_response = ""
+    # Display the usage stats table
+    st.table(usage_stats)
 
-#             chat_messages = [{"role": m["role"], "content": m["content"]}
-#                     for m in st.session_state.messages
-#                 ]
-            
-#             messages = [{"role":'system', "content":st.session_state['system_prompt']}]
-#             messages.extend(chat_messages)
-            
-#             for response in openai.ChatCompletion.create(
-#                 model=st.session_state["selected_model"],
-#                 messages=messages,
-#                 stream=True,
-#             ):
-#                 full_response += response.choices[0].delta.get("content", "")
-#                 # print(response)
-#                 message_placeholder.markdown(full_response + "▌")
-#             message_placeholder.markdown(full_response)
-#         st.session_state.messages.append({"role": "assistant", "content": full_response})
 
-    
+st.divider()
+
 with st.container():
     if user_input := st.chat_input():
         st.session_state.messages.append({"role": "user", "content": user_input})
