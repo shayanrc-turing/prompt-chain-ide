@@ -7,7 +7,7 @@ import glob
 
 st.title('Prompt IDE')
 
-openai.api_key = st.secrets['OPANAI_API_KEY']
+openai.api_key = st.secrets['OPENAI_API_KEY']
 
 # @st.cache(ttl=360)
 def get_available_models():
@@ -19,9 +19,6 @@ def get_available_models():
                 models.append(model['id'])
     return models
 
-
-
-import glob
 
 def get_available_system_prompts():
     available_prompts = {}
@@ -67,15 +64,6 @@ model_tab, system_tab, usage_tab = st.tabs(["Model", "System", "Usage"])
 
 # Sytem prompt tab:
 with system_tab:
-        
-    # st.session_state['selected_system_prompt'] = st.selectbox('System Prompts', 
-    #                                                           st.session_state["available_system_prompts"].keys(),
-    #                                                           index=2
-    #                                                           )
-    
-    # system_text = st.session_state["available_system_prompts"][st.session_state['selected_system_prompt']]
-
-    # st.session_state["system_prompt"] = st.text_area("System Message", system_text)
 
     left_column, right_column = st.columns(2)
 
@@ -171,9 +159,4 @@ with st.container():
         st.write(f"Consumed prompt tokens: {completion_tokens_count} ")  # displaying the generated tokens count
         num_reqs = st.session_state.usage[st.session_state["selected_model"]]["num_requests"]
         st.write(f"Consumed prompt tokens: {num_reqs} ")  # displaying the consumed tokens
-
-
-
-
-
 
