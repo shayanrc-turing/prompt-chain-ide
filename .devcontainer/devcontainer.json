@@ -3,7 +3,7 @@
 	"customizations": {
 	  "codespaces": {
 		"openFiles": [
-		  "README.md"
+		  "app.py"
 		]
 	  },
 	  "vscode": {
