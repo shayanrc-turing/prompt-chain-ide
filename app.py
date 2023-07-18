@@ -4,10 +4,13 @@ from utils.token_utils import num_tokens_from_messages
 import glob
 
 
-
-st.title('Prompt IDE')
-
-openai.api_key = st.secrets['OPENAI_API_KEY']
+st.set_page_config(page_title='Prompt Chain IDE', page_icon=None, layout='wide')
+# st.title('Prompt IDE')
+try:
+    OPENAI_API_KEY = st.secrets['OPENAI_API_KEY']
+    openai.api_key = OPENAI_API_KEY
+except:
+    OPENAI_API_KEY = None
 
 
 @st.cache_data
@@ -104,6 +107,10 @@ with system_tab:
 
 
 with model_tab:
+    # Get the OPENAI_API_KEY from the user if not present in secrets
+    if OPENAI_API_KEY is None:
+        OPENAI_API_KEY = st.text_input("OpenAI API Key")
+        openai.api_key = OPENAI_API_KEY
     st.session_state['selected_model'] = st.selectbox('Open AI Models', available_models)
     st.session_state['temperature'] = st.slider("Temperature", step=5, min_value=0, max_value=200, value=100)
 
