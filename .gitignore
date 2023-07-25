@@ -1,2 +1,3 @@
 utils/__pycache__/*.pyc
 .streamlit/secrets.toml
+prompt_chain/__pycache__/*.pyc
