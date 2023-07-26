@@ -2,12 +2,18 @@ import streamlit as st
 import openai
 from utils.token_utils import num_tokens_from_messages
 import glob
+from typing import Dict, List
+
+from prompt_chain.chat_completion import chat_completion
 
 
-
-st.title('Prompt IDE')
-
-openai.api_key = st.secrets['OPENAI_API_KEY']
+st.set_page_config(page_title='Prompt Chain IDE', page_icon=None, layout='wide')
+# st.title('Prompt IDE')
+try:
+    OPENAI_API_KEY = st.secrets['OPENAI_API_KEY']
+    openai.api_key = OPENAI_API_KEY
+except:
+    OPENAI_API_KEY = None
 
 
 @st.cache_data
@@ -34,31 +40,6 @@ def on_partial(partial, events=[]):
         return partial
 
 
-def process_response(resp):
-    partial = {'function_name': '', 'function_arguments': '', 'content': ''}
-    for chunk in resp:
-        choices = chunk['choices']
-        choice = choices[0]
-        delta = choice['delta']
-
-        content = delta.get('content', '')
-        partial['content'] += content if isinstance(content, str) else ''
-
-        if 'function_call' in delta:
-            delta_function_name = delta['function_call'].get('name', '')
-            if len(delta_function_name):
-                partial['function_name'] = delta_function_name
-            argument_part = delta['function_call']['arguments']
-            partial['function_arguments'] += argument_part if isinstance(argument_part, str) else ''
-
-        partial.update({
-            'object': chunk['object'],
-            'model': chunk['model'],
-            'role': delta.get('role', None),
-            'finish_reason': choice.get('finish_reason', None)
-        })
-
-        yield partial
 
 
 available_models = sorted(get_available_models())
@@ -104,6 +85,10 @@ with system_tab:
 
 
 with model_tab:
+    # Get the OPENAI_API_KEY from the user if not present in secrets
+    if OPENAI_API_KEY is None:
+        OPENAI_API_KEY = st.text_input("OpenAI API Key")
+        openai.api_key = OPENAI_API_KEY
     st.session_state['selected_model'] = st.selectbox('Open AI Models', available_models)
     st.session_state['temperature'] = st.slider("Temperature", step=5, min_value=0, max_value=200, value=100)
 
@@ -127,54 +112,84 @@ with usage_tab:
 
 st.divider()
 
-with st.container():
+# -- Chat View --
 
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-    
-    
+        
+chat_messages = [{"role": m["role"], 
+                  "content": m["content"]}
+                  for m in st.session_state.messages
+                  ]    
+with st.container():    
+    if st.button('Clear Chat'):
+        chat_messages = []
+        st.session_state.messages = []
+
     if user_input := st.chat_input():
-
-        st.session_state.messages.append({"role": "user", "content": user_input})
-        with st.chat_message("user"):
-            st.markdown(user_input)
+        user_message = {"role": "user", "content": user_input}
+        # st.session_state.messages.append(user_message)
+        # with message_history_placeholder.chat_message("user"):
+        #     # st.markdown(user_input)
+        #     message_history_placeholder.markdown(user_input)
+        for message in (chat_messages+[user_message]):
+            with st.chat_message(name=message['role']):
+                st.markdown(message['content'])
 
         with st.chat_message("assistant"):
             
-            message_placeholder = st.empty()
+            ai_response_placeholder = st.empty()
             full_response = ""
 
-            chat_messages = [{"role": m["role"], "content": m["content"]}
-                    for m in st.session_state.messages
-                ]
-            print(len(chat_messages))
-            messages = [{"role":'system', "content":st.session_state['system_prompt']}]
-            messages.extend(chat_messages)
+            
+            
+            system_messages = [{"role":'system', 
+                                "content":st.session_state['system_prompt']}]
+            
 
             usage = st.session_state.usage[st.session_state["selected_model"]]
-            prompt_tokens_count = num_tokens_from_messages(messages, model=st.session_state["selected_model"])
+            prompt_tokens_count = num_tokens_from_messages(system_messages+chat_messages+[user_message], 
+                                                           model=st.session_state["selected_model"])
 
             usage["prompt_tokens"] += prompt_tokens_count
             usage["total_tokens"] += prompt_tokens_count
 
-            response = openai.ChatCompletion.create(
-                model=st.session_state["selected_model"],
-                temperature=st.session_state['temperature'] / 100,
-                messages=messages,
-                stream=True
-            )
+            # st.session_state.messages.append(user_message)
 
-            for partial in process_response(response):
+            # response = openai.ChatCompletion.create(
+            #     model=st.session_state["selected_model"],
+            #     temperature=st.session_state['temperature'] / 100,
+            #     messages=messages,
+            #     stream=True
+            # )
+
+            # for partial in process_response(response):
+            #     full_response = partial.get("content", "")
+            #     message_placeholder.markdown(full_response + "▌")
+
+            # for partial in process_response(response):
+            llm = {
+                "model": st.session_state["selected_model"] ,
+                "temperature": st.session_state['temperature'] / 100,
+                "provider": "openai"
+            }
+            
+            for partial in chat_completion(LLM_dict = llm, 
+                                           prompt_messages=system_messages, 
+                                           chat_history=chat_messages, 
+                                           user_message=user_message):
+
+                
                 full_response = partial.get("content", "")
-                message_placeholder.markdown(full_response + "▌")
+                ai_response_placeholder.markdown(full_response + "▌")
 
-            message_placeholder.markdown(full_response)
+            print(partial)
+            ai_response_placeholder.markdown(full_response)
 
         response_message = {"role": 'assistant', 
                             # "role": partial['role'], 
                             "content": full_response}
-        st.session_state.messages.append(response_message)
+        chat_messages.append(user_message)
+        chat_messages.append(response_message)
+        st.session_state.messages = chat_messages
         completion_tokens_count = num_tokens_from_messages([response_message], model=st.session_state["selected_model"])
         usage["completion_tokens"] += completion_tokens_count
         usage["total_tokens"] += completion_tokens_count
